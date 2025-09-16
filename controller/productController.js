@@ -408,10 +408,272 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+// ---------------- Public API functions for main website ----------------
+
+const getPublicProducts = async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 20, 
+      category, 
+      search,
+      minPrice,
+      maxPrice,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build filter query
+    let filter = { isActive: true }; // Only active products for public
+
+    if (category) {
+      filter.category = new RegExp(category, 'i');
+    }
+
+    if (search) {
+      filter.$or = [
+        { name: new RegExp(search, 'i') },
+        { description: new RegExp(search, 'i') },
+        { brand: new RegExp(search, 'i') }
+      ];
+    }
+
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = parseFloat(minPrice);
+      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
+    }
+
+    // Build sort object
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const products = await Product.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum)
+      .select('-__v') // Exclude version field
+      .lean();
+
+    const totalProducts = await Product.countDocuments(filter);
+    const totalPages = Math.ceil(totalProducts / limitNum);
+
+    // Transform image URLs to include full backend URL
+    // Production fallback for image serving
+    let baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    
+    // If we're on production and BASE_URL is not set, use the correct production URL
+    if (!process.env.BASE_URL && req.get('host') && req.get('host').includes('onrender.com')) {
+      baseUrl = 'https://backend-ecommerce-admin.onrender.com';
+    }
+    
+    console.log('=== IMAGE URL TRANSFORMATION ===');
+    console.log('BASE_URL from env:', process.env.BASE_URL);
+    console.log('Computed baseUrl:', baseUrl);
+    console.log('Request host:', req.get('host'));
+    const transformedProducts = products.map(product => ({
+      ...product,
+      images: product.images?.map(img => {
+        const fullUrl = img.url.startsWith('http') ? img.url : `${baseUrl}${img.url}`;
+        console.log(`Image URL: ${img.url} -> ${fullUrl}`);
+        return {
+          ...img,
+          url: fullUrl
+        };
+      }) || []
+    }));
+
+    res.json({
+      success: true,
+      data: transformedProducts,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalProducts,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+        limit: limitNum
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching public products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching products',
+      error: error.message
+    });
+  }
+};
+
+const getPublicProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const product = await Product.findOne({ 
+      _id: id, 
+      isActive: true 
+    }).select('-__v').lean();
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found or inactive'
+      });
+    }
+
+    // Transform image URLs to include full backend URL
+    // Production fallback for image serving
+    let baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    
+    // If we're on production and BASE_URL is not set, use the correct production URL
+    if (!process.env.BASE_URL && req.get('host') && req.get('host').includes('onrender.com')) {
+      baseUrl = 'https://backend-ecommerce-admin.onrender.com';
+    }
+    
+    console.log('=== IMAGE URL TRANSFORMATION ===');
+    console.log('BASE_URL from env:', process.env.BASE_URL);
+    console.log('Computed baseUrl:', baseUrl);
+    console.log('Request host:', req.get('host'));
+    const transformedProduct = {
+      ...product,
+      images: product.images?.map(img => {
+        const fullUrl = img.url.startsWith('http') ? img.url : `${baseUrl}${img.url}`;
+        console.log(`Single Product Image URL: ${img.url} -> ${fullUrl}`);
+        return {
+          ...img,
+          url: fullUrl
+        };
+      }) || []
+    };
+
+    res.json({
+      success: true,
+      data: transformedProduct
+    });
+
+  } catch (error) {
+    console.error('Error fetching public product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching product',
+      error: error.message
+    });
+  }
+};
+
+const getProductsByCategory = async (req, res) => {
+  try {
+    const { category } = req.params;
+    const { 
+      page = 1, 
+      limit = 20,
+      search,
+      minPrice,
+      maxPrice,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build filter query
+    let filter = { 
+      isActive: true,
+      category: new RegExp(category, 'i')
+    };
+
+    if (search) {
+      filter.$or = [
+        { name: new RegExp(search, 'i') },
+        { description: new RegExp(search, 'i') },
+        { brand: new RegExp(search, 'i') }
+      ];
+    }
+
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = parseFloat(minPrice);
+      if (maxPrice) filter.price.$lte = parseFloat(maxPrice);
+    }
+
+    // Build sort object
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const products = await Product.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(limitNum)
+      .select('-__v')
+      .lean();
+
+    const totalProducts = await Product.countDocuments(filter);
+    const totalPages = Math.ceil(totalProducts / limitNum);
+
+    // Transform image URLs to include full backend URL
+    // Production fallback for image serving
+    let baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+    
+    // If we're on production and BASE_URL is not set, use the correct production URL
+    if (!process.env.BASE_URL && req.get('host') && req.get('host').includes('onrender.com')) {
+      baseUrl = 'https://backend-ecommerce-admin.onrender.com';
+    }
+    
+    console.log('=== IMAGE URL TRANSFORMATION ===');
+    console.log('BASE_URL from env:', process.env.BASE_URL);
+    console.log('Computed baseUrl:', baseUrl);
+    console.log('Request host:', req.get('host'));
+    const transformedProducts = products.map(product => ({
+      ...product,
+      images: product.images?.map(img => {
+        const fullUrl = img.url.startsWith('http') ? img.url : `${baseUrl}${img.url}`;
+        console.log(`Image URL: ${img.url} -> ${fullUrl}`);
+        return {
+          ...img,
+          url: fullUrl
+        };
+      }) || []
+    }));
+
+    res.json({
+      success: true,
+      data: transformedProducts,
+      category: category,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalProducts,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+        limit: limitNum
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching products by category:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching products by category',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getAllProducts,
   getProductById,
   createProduct,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  // Public API functions
+  getPublicProducts,
+  getPublicProductById,
+  getProductsByCategory
 };
