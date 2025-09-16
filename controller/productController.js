@@ -98,8 +98,16 @@ const getProductById = async (req, res) => {
 // Create product (admin only)
 const createProduct = async (req, res) => {
   try {
+    console.log('=== CREATE PRODUCT REQUEST ===');
+    console.log('User:', req.user);
+    console.log('Request body:', req.body);
+    
     // Auth guard (route also protects, but double-check)
+    console.log('Auth check - req.user:', req.user);
+    console.log('Auth check - user role:', req.user?.role);
+    
     if (!req.user || req.user.role !== 'admin') {
+      console.log('Auth failed - user not admin or no user found');
       return res.status(403).json({ success: false, message: 'Access denied. Admin privileges required.' });
     }
 
@@ -113,6 +121,14 @@ const createProduct = async (req, res) => {
 
     // Required fields for simplified (non-variant) product
     if (!name || !description || !category || !meterial || price === undefined || stock === undefined) {
+      console.log('Validation failed - missing required fields:', {
+        name: !!name,
+        description: !!description,
+        category: !!category,
+        meterial: !!meterial,
+        price: price !== undefined,
+        stock: stock !== undefined
+      });
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: name, description, category, meterial, price, stock'
@@ -177,6 +193,7 @@ const createProduct = async (req, res) => {
     }
 
     await doc.save(); // pre-save will create slug and SKU
+    console.log('Product created successfully:', doc._id);
 
     return res.status(201).json({
       success: true,

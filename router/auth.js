@@ -84,11 +84,24 @@ router.post("/admin/login", async (req, res) => {
     }
 
     // Issue JWT
+    const tokenPayload = { 
+      id: admin._id, 
+      role: admin.role,
+      email: admin.email,
+      name: admin.name
+    };
+    
+    console.log('=== ADMIN LOGIN DEBUG ===');
+    console.log('Admin found:', admin);
+    console.log('Token payload:', tokenPayload);
+    
     const token = jwt.sign(
-      { id: admin._id, role: admin.role },
+      tokenPayload,
       process.env.JWT_SECRET || "dev-secret",
       { expiresIn: "7d" }
     );
+    
+    console.log('Generated token:', token.substring(0, 50) + '...');
 
     res.json({
       success: true,
