@@ -8,40 +8,9 @@ const connectDB = require("./middilware/db");
  
 const app = express();
 // app.use(helmet());
-// Enhanced CORS configuration for main website access
+// Allow all CORS origins for development and broad compatibility
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:5173', 
-      'https://royalthread.co.in',
-      'https://www.royalthread.co.in',
-      // Main site backend domains
-      'https://e-commerce-backend-r6s0.onrender.com',
-      'http://localhost:8000', // Common main site backend port
-      'http://localhost:3001', // Alternative main site port
-      // Add your main website domains here
-    ];
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      // For development, allow any localhost origin
-      if (origin && origin.includes('localhost')) {
-        callback(null, true);
-      } else {
-        // Allow any onrender.com subdomain for main site
-        if (origin && origin.includes('onrender.com')) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      }
-    }
-  },
+  origin: '*', // Allow all origins
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -56,7 +25,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Serve static files from uploads directory with proper headers
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   setHeaders: (res, filePath) => {
-    // Set CORS headers for images - Allow all origins for main site access
+    // Set CORS headers for images - Allow all origins
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Accept, User-Agent');
@@ -119,10 +88,11 @@ app.get("/api/images/:filename", (req, res) => {
     });
   }
   
-  // Set CORS headers
+  // Set CORS headers - Allow all origins
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
   
   // Serve the file
   res.sendFile(filePath);
