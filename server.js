@@ -128,7 +128,38 @@ app.get("/api/images/:filename", (req, res) => {
   res.sendFile(filePath);
 });
   
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) => res.json({ 
+  ok: true, 
+  message: 'Admin backend is running',
+  timestamp: new Date().toISOString(),
+  version: '1.0.0'
+}));
+
+// Additional health check for image serving
+app.get("/api/images/health", (_req, res) => {
+  const fs = require('fs');
+  const uploadsDir = path.join(__dirname, 'uploads');
+  
+  try {
+    const files = fs.readdirSync(uploadsDir);
+    res.json({
+      success: true,
+      message: 'Image serving is healthy',
+      data: {
+        uploadsDir,
+        filesCount: files.length,
+        sampleFiles: files.slice(0, 3),
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Image serving health check failed',
+      error: error.message
+    });
+  }
+});
 
 // Test endpoint to check image serving
 app.get("/test-image", (_req, res) => {
