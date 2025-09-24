@@ -70,6 +70,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
 app.use("/api/auth", require("./router/auth"));
 app.use("/api/products", require("./router/product"));
 app.use("/api/admin", require("./router/admin"));
+app.use("/api/dashboard", require("./router/dashboard"));
 app.use("/api/orders", require("./router/order"));
 app.use("/api/payments", require("./router/payment"));
 app.use("/api/upload", require("./router/upload"));
@@ -112,6 +113,8 @@ app.get("/api/images/health", (_req, res) => {
   
   try {
     const files = fs.readdirSync(uploadsDir);
+    const baseUrl = (process.env.BASE_URL || `${_req.protocol}://${_req.get('host')}`).replace(/\/$/, '');
+    
     res.json({
       success: true,
       message: 'Image serving is healthy',
@@ -119,6 +122,13 @@ app.get("/api/images/health", (_req, res) => {
         uploadsDir,
         filesCount: files.length,
         sampleFiles: files.slice(0, 3),
+        baseUrl: baseUrl,
+        sampleImageUrls: files.slice(0, 3).map(file => ({
+          filename: file,
+          staticUrl: `${baseUrl}/uploads/${file}`,
+          apiUrl: `${baseUrl}/api/images/${file}`,
+          uploadUrl: `${baseUrl}/api/upload/serve/${file}`
+        })),
         timestamp: new Date().toISOString()
       }
     });
@@ -138,12 +148,13 @@ app.get("/test-image", (_req, res) => {
   
   try {
     const files = fs.readdirSync(uploadsDir);
-    const baseUrl = process.env.BASE_URL || `${_req.protocol}://${_req.get('host')}`;
+    const baseUrl = (process.env.BASE_URL || `${_req.protocol}://${_req.get('host')}`).replace(/\/$/, '');
     
     console.log('=== IMAGE SERVER TEST ===');
     console.log('Uploads directory:', uploadsDir);
     console.log('Files count:', files.length);
     console.log('Files:', files.slice(0, 5));
+    console.log('Base URL:', baseUrl);
     
     res.json({
       success: true,
@@ -180,7 +191,7 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ success: false, error: "Internal error" });
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 8000;
  
 // console.log("Connecting to database:", process.env.MONGO_URI);
 connectDB(process.env.MONGO_URI).then(() => {

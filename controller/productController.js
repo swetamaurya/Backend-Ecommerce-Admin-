@@ -3,7 +3,7 @@ const Product = require('../models/Product');
 // Get all products (admin only)
 const getAllProducts = async (req, res) => {
   try {
-    const { page = 1, limit = 10, category, featured, search } = req.query;
+    const { page , limit , category, featured, search } = req.query;
     
     // Build base query
     let query = {};
@@ -413,8 +413,8 @@ const deleteProduct = async (req, res) => {
 const getPublicProducts = async (req, res) => {
   try {
     const { 
-      page = 1, 
-      limit = 20, 
+      page , 
+      limit , 
       category, 
       search,
       minPrice,
@@ -471,6 +471,9 @@ const getPublicProducts = async (req, res) => {
       baseUrl = 'https://backend-ecommerce-admin.onrender.com';
     }
     
+    // Ensure baseUrl doesn't end with slash
+    baseUrl = baseUrl.replace(/\/$/, '');
+    
     console.log('=== IMAGE URL TRANSFORMATION ===');
     console.log('BASE_URL from env:', process.env.BASE_URL);
     console.log('Computed baseUrl:', baseUrl);
@@ -478,7 +481,16 @@ const getPublicProducts = async (req, res) => {
     const transformedProducts = products.map(product => ({
       ...product,
       images: product.images?.map(img => {
-        const fullUrl = img.url.startsWith('http') ? img.url : `${baseUrl}${img.url}`;
+        let fullUrl;
+        if (img.url.startsWith('http')) {
+          fullUrl = img.url;
+        } else if (img.url.startsWith('/uploads/')) {
+          fullUrl = `${baseUrl}${img.url}`;
+        } else if (img.url.startsWith('uploads/')) {
+          fullUrl = `${baseUrl}/${img.url}`;
+        } else {
+          fullUrl = `${baseUrl}/uploads/${img.url}`;
+        }
         console.log(`Image URL: ${img.url} -> ${fullUrl}`);
         return {
           ...img,
@@ -570,8 +582,8 @@ const getProductsByCategory = async (req, res) => {
   try {
     const { category } = req.params;
     const { 
-      page = 1, 
-      limit = 20,
+      page , 
+      limit ,
       search,
       minPrice,
       maxPrice,
@@ -626,6 +638,9 @@ const getProductsByCategory = async (req, res) => {
       baseUrl = 'https://backend-ecommerce-admin.onrender.com';
     }
     
+    // Ensure baseUrl doesn't end with slash
+    baseUrl = baseUrl.replace(/\/$/, '');
+    
     console.log('=== IMAGE URL TRANSFORMATION ===');
     console.log('BASE_URL from env:', process.env.BASE_URL);
     console.log('Computed baseUrl:', baseUrl);
@@ -633,7 +648,16 @@ const getProductsByCategory = async (req, res) => {
     const transformedProducts = products.map(product => ({
       ...product,
       images: product.images?.map(img => {
-        const fullUrl = img.url.startsWith('http') ? img.url : `${baseUrl}${img.url}`;
+        let fullUrl;
+        if (img.url.startsWith('http')) {
+          fullUrl = img.url;
+        } else if (img.url.startsWith('/uploads/')) {
+          fullUrl = `${baseUrl}${img.url}`;
+        } else if (img.url.startsWith('uploads/')) {
+          fullUrl = `${baseUrl}/${img.url}`;
+        } else {
+          fullUrl = `${baseUrl}/uploads/${img.url}`;
+        }
         console.log(`Image URL: ${img.url} -> ${fullUrl}`);
         return {
           ...img,

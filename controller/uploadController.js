@@ -60,10 +60,15 @@ const uploadImage = async (req, res) => {
     // Return the file URL
     const fileUrl = `/uploads/${uniqueFilename}`;
     
+    // Clean BASE_URL to ensure no trailing slash
+    const baseUrl = (process.env.BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
+    
     console.log('=== IMAGE UPLOAD DEBUG ===');
     console.log('File saved to:', filePath);
     console.log('File URL:', fileUrl);
-    console.log('Full URL would be:', `${process.env.BASE_URL || 'http://localhost:5001'}${fileUrl}`);
+    console.log('Base URL from env:', process.env.BASE_URL);
+    console.log('Cleaned baseUrl:', baseUrl);
+    console.log('Full URL would be:', `${baseUrl}${fileUrl}`);
     
     res.json({
       success: true,
@@ -71,7 +76,7 @@ const uploadImage = async (req, res) => {
       data: {
         url: fileUrl,
         filename: uniqueFilename,
-        fullUrl: `${process.env.BASE_URL || 'http://localhost:5001'}${fileUrl}`
+        fullUrl: `${baseUrl}${fileUrl}`
       }
     });
 
@@ -206,7 +211,7 @@ const testImageServing = async (req, res) => {
         filename,
         filePath,
         url: `/uploads/${filename}`,
-        fullUrl: `${process.env.BASE_URL || 'http://localhost:5001'}/uploads/${filename}`
+        fullUrl: `${process.env.BASE_URL || 'http://localhost:8000'}/uploads/${filename}`
       }
     });
   } catch (error) {
