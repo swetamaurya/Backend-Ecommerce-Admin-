@@ -106,85 +106,27 @@ app.get("/health", (_req, res) => res.json({
   version: '1.0.0'
 }));
 
-// Additional health check for image serving
+// Cloudinary health check
 app.get("/api/images/health", (_req, res) => {
-  const fs = require('fs');
-  const uploadsDir = path.join(__dirname, 'uploads');
-  
   try {
-    const files = fs.readdirSync(uploadsDir);
-    const baseUrl = (process.env.BASE_URL || `${_req.protocol}://${_req.get('host')}`).replace(/\/$/, '');
-    
     res.json({
       success: true,
-      message: 'Image serving is healthy',
+      message: 'Cloudinary image serving is healthy',
       data: {
-        uploadsDir,
-        filesCount: files.length,
-        sampleFiles: files.slice(0, 3),
-        baseUrl: baseUrl,
-        sampleImageUrls: files.slice(0, 3).map(file => ({
-          filename: file,
-          staticUrl: `${baseUrl}/uploads/${file}`,
-          apiUrl: `${baseUrl}/api/images/${file}`,
-          uploadUrl: `${baseUrl}/api/upload/serve/${file}`
-        })),
+        provider: 'Cloudinary',
+        cloudName: process.env.CLOUDINARY_URL ? 'dadxbc4xh' : 'Not configured',
         timestamp: new Date().toISOString()
       }
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Image serving health check failed',
+      message: 'Cloudinary health check failed',
       error: error.message
     });
   }
 });
 
-// Test endpoint to check image serving
-app.get("/test-image", (_req, res) => {
-  const fs = require('fs');
-  const uploadsDir = path.join(__dirname, 'uploads');
-  
-  try {
-    const files = fs.readdirSync(uploadsDir);
-    const baseUrl = (process.env.BASE_URL || `${_req.protocol}://${_req.get('host')}`).replace(/\/$/, '');
-    
-    console.log('=== IMAGE SERVER TEST ===');
-    console.log('Uploads directory:', uploadsDir);
-    console.log('Files count:', files.length);
-    console.log('Files:', files.slice(0, 5));
-    console.log('Base URL:', baseUrl);
-    
-    res.json({
-      success: true,
-      message: 'Image serving test',
-      data: {
-        uploadsDir,
-        filesCount: files.length,
-        files: files.slice(0, 5), // Show first 5 files
-        baseUrl: baseUrl,
-        imageUrls: {
-          static: files.length > 0 ? `${baseUrl}/uploads/${files[0]}` : null,
-          api: files.length > 0 ? `${baseUrl}/api/images/${files[0]}` : null,
-          upload: files.length > 0 ? `${baseUrl}/api/upload/serve/${files[0]}` : null
-        },
-        cors: {
-          enabled: true,
-          allowedOrigins: ['*'],
-          methods: ['GET', 'OPTIONS', 'HEAD']
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Error reading uploads directory:', error);
-    res.json({
-      success: false,
-      message: 'Error reading uploads directory',
-      error: error.message
-    });
-  }
-});
 
 app.use((err, _req, res, _next) => {
   console.error(err);

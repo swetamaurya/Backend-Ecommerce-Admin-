@@ -1,13 +1,130 @@
-const path = require('path');
-const fs = require('fs');
+const cloudinary = require('cloudinary').v2;
+const multer = require('multer');
+const crypto = require('crypto');
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Configure Cloudinary
+// Cloudinary will automatically use CLOUDINARY_URL environment variable
+// No need to manually configure individual parameters
 
-// Simple file upload handler
+// Simple in-memory cache to prevent rapid duplicate uploads
+const uploadCache = new Map();
+const CACHE_DURATION = 30000; // 30 seconds
+
+// Clean up expired cache entries
+const cleanupCache = () => {
+  const now = Date.now();
+  for (const [key, value] of uploadCache.entries()) {
+    if (now - value.timestamp > CACHE_DURATION) {
+      uploadCache.delete(key);
+    }
+  }
+};
+
+// Run cleanup every 5 minutes
+setInterval(cleanupCache, 5 * 60 * 1000);
+
+// Function to generate unique identifier for images
+const generateImageHash = (imageData) => {
+  if (imageData.startsWith('data:image/')) {
+    // For base64 data, hash the actual image content
+    const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
+    return crypto.createHash('md5').update(base64Data).digest('hex');
+  } else if (Buffer.isBuffer(imageData)) {
+    // For buffer data (file uploads)
+    return crypto.createHash('md5').update(imageData).digest('hex');
+  }
+  return null;
+};
+
+// Function to extract Cloudinary public ID from URL
+const extractPublicIdFromUrl = (url) => {
+  if (!url || !url.includes('cloudinary.com')) {
+    return null;
+  }
+  
+  try {
+    // Extract public ID from Cloudinary URL
+    // Format: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{format}
+    const match = url.match(/\/upload\/v\d+\/([^\.]+)/);
+    return match ? match[1] : null;
+  } catch (error) {
+    console.error('Error extracting public ID from URL:', url, error);
+    return null;
+  }
+};
+
+
+// Function to delete multiple images from Cloudinary
+const deleteImagesFromCloudinary = async (imageUrls) => {
+  if (!imageUrls || imageUrls.length === 0) {
+    return { success: true, deleted: [] };
+  }
+
+  const results = [];
+  
+  for (const url of imageUrls) {
+    const publicId = extractPublicIdFromUrl(url);
+    
+    if (publicId) {
+      try {
+        const result = await cloudinary.uploader.destroy(publicId);
+        results.push({
+          url,
+          publicId,
+          success: result.result === 'ok',
+          result: result.result
+        });
+        
+        if (result.result === 'ok') {
+          console.log(`✅ Deleted image from Cloudinary: ${publicId}`);
+        } else {
+          console.log(`⚠️ Image not found or already deleted: ${publicId}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error deleting image ${publicId}:`, error);
+        results.push({
+          url,
+          publicId,
+          success: false,
+          error: error.message
+        });
+      }
+    } else {
+      console.log(`⚠️ Could not extract public ID from URL: ${url}`);
+      results.push({
+        url,
+        publicId: null,
+        success: false,
+        error: 'Could not extract public ID from URL'
+      });
+    }
+  }
+  
+  return {
+    success: true,
+    deleted: results.filter(r => r.success),
+    failed: results.filter(r => !r.success)
+  };
+};
+
+// Configure multer for memory storage (we'll upload to Cloudinary)
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Check file type
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
+
+// Cloudinary upload handler with duplicate prevention
 const uploadImage = async (req, res) => {
   try {
     // Check if user is admin
@@ -18,67 +135,236 @@ const uploadImage = async (req, res) => {
       });
     }
 
-    // For now, we'll accept base64 images and save them as files
-    const { imageData, filename } = req.body;
+    console.log('=== UPLOAD REQUEST DEBUG ===');
+    console.log('Request body keys:', Object.keys(req.body));
+    console.log('Request file:', req.file ? 'Present' : 'Not present');
+    console.log('Image data present:', req.body.imageData ? 'Yes' : 'No');
+
+    // Handle both file upload and base64 data
+    let uploadResult;
+    let imageHash = null;
+    let imageData = null;
     
-    if (!imageData) {
-      return res.status(400).json({
-        success: false,
-        message: 'No image data provided'
-      });
+    // Extract image data for hash generation
+    if (req.file) {
+      imageData = req.file.buffer;
+    } else if (req.body.imageData) {
+      imageData = req.body.imageData;
     }
-
-    // Generate unique filename
-    const timestamp = Date.now();
-    const fileExtension = filename ? path.extname(filename) : '.jpg';
-    const uniqueFilename = `product_${timestamp}${fileExtension}`;
-    const filePath = path.join(uploadsDir, uniqueFilename);
-
-    // Handle base64 data
-    if (imageData.startsWith('data:image/')) {
-      const base64Data = imageData.replace(/^data:image\/[a-z]+;base64,/, '');
-      const buffer = Buffer.from(base64Data, 'base64');
+    
+    if (imageData) {
+      imageHash = generateImageHash(imageData);
       
-      try {
-        fs.writeFileSync(filePath, buffer);
-        console.log('Image file written successfully:', filePath);
-      } catch (writeError) {
-        console.error('Error writing image file:', writeError);
-        return res.status(500).json({
-          success: false,
-          message: 'Error saving image file',
-          error: writeError.message
+      // Check cache for recent uploads
+      const cacheKey = imageHash;
+      const cachedResult = uploadCache.get(cacheKey);
+      
+      if (cachedResult && (Date.now() - cachedResult.timestamp) < CACHE_DURATION) {
+        console.log('🚫 Duplicate upload prevented by cache');
+        return res.json({
+          success: true,
+          message: 'Duplicate upload prevented',
+          data: {
+            ...cachedResult.data,
+            isDuplicate: true,
+            fromCache: true
+          }
         });
       }
+    }
+    
+    if (req.file) {
+      // Handle file upload via multer
+      imageHash = generateImageHash(req.file.buffer);
+      
+      console.log('=== FILE UPLOAD DEBUG ===');
+      console.log('File size:', req.file.size);
+      console.log('File mimetype:', req.file.mimetype);
+      console.log('Generated hash:', imageHash);
+      
+      // Generate unique public ID based on image hash
+      const publicId = `admin-panel/products/${imageHash}`;
+      console.log('Public ID:', publicId);
+      
+      // Check if image already exists in Cloudinary
+      try {
+        const existingImage = await cloudinary.api.resource(publicId);
+        if (existingImage) {
+          console.log('✅ Image already exists in Cloudinary, returning existing URL');
+          return res.json({
+            success: true,
+            message: 'Image already exists in Cloudinary',
+            data: {
+              url: existingImage.secure_url,
+              publicId: existingImage.public_id,
+              imageHash: imageHash,
+              format: existingImage.format,
+              size: existingImage.bytes,
+              width: existingImage.width,
+              height: existingImage.height,
+              isDuplicate: true
+            }
+          });
+        }
+      } catch (error) {
+        // Image doesn't exist, proceed with upload
+        console.log('Image does not exist in Cloudinary, proceeding with upload');
+      }
+      
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          public_id: publicId,
+          overwrite: true, // This will replace existing image with same public_id
+          resource_type: 'auto',
+          transformation: [
+            { width: 800, height: 800, crop: 'limit' },
+            { quality: 'auto' }
+          ]
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            return res.status(500).json({
+              success: false,
+              message: 'Error uploading image to Cloudinary',
+              error: error.message
+            });
+          }
+          
+          console.log('=== CLOUDINARY UPLOAD SUCCESS ===');
+          console.log('Image Hash:', imageHash);
+          console.log('Public ID:', result.public_id);
+          console.log('Secure URL:', result.secure_url);
+          console.log('Format:', result.format);
+          console.log('Size:', result.bytes);
+          
+          const responseData = {
+            url: result.secure_url,
+            publicId: result.public_id,
+            imageHash: imageHash,
+            format: result.format,
+            size: result.bytes,
+            width: result.width,
+            height: result.height
+          };
+          
+          // Cache the result
+          uploadCache.set(imageHash, {
+            data: responseData,
+            timestamp: Date.now()
+          });
+          
+          res.json({
+            success: true,
+            message: 'Image uploaded successfully to Cloudinary',
+            data: responseData
+          });
+        }
+      );
+      
+      uploadStream.end(req.file.buffer);
+      
+    } else if (req.body.imageData) {
+      // Handle base64 data
+      const { imageData, filename } = req.body;
+      
+      if (!imageData.startsWith('data:image/')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid image format. Please provide base64 image data.'
+        });
+      }
+
+      imageHash = generateImageHash(imageData);
+      
+      console.log('=== BASE64 UPLOAD DEBUG ===');
+      console.log('Base64 data length:', imageData.length);
+      console.log('Generated hash:', imageHash);
+      
+      // Generate unique public ID based on image hash
+      const publicId = `admin-panel/products/${imageHash}`;
+      console.log('Public ID:', publicId);
+      
+      // Check if image already exists in Cloudinary
+      try {
+        const existingImage = await cloudinary.api.resource(publicId);
+        if (existingImage) {
+          console.log('✅ Image already exists in Cloudinary, returning existing URL');
+          return res.json({
+            success: true,
+            message: 'Image already exists in Cloudinary',
+            data: {
+              url: existingImage.secure_url,
+              publicId: existingImage.public_id,
+              imageHash: imageHash,
+              format: existingImage.format,
+              size: existingImage.bytes,
+              width: existingImage.width,
+              height: existingImage.height,
+              isDuplicate: true
+            }
+          });
+        }
+      } catch (error) {
+        // Image doesn't exist, proceed with upload
+        console.log('Image does not exist in Cloudinary, proceeding with upload');
+      }
+
+      try {
+        uploadResult = await cloudinary.uploader.upload(imageData, {
+          public_id: publicId,
+          overwrite: true, // This will replace existing image with same public_id
+          resource_type: 'auto',
+          transformation: [
+            { width: 800, height: 800, crop: 'limit' },
+            { quality: 'auto' }
+          ]
+        });
+        
+        console.log('=== CLOUDINARY BASE64 UPLOAD SUCCESS ===');
+        console.log('Image Hash:', imageHash);
+        console.log('Public ID:', uploadResult.public_id);
+        console.log('Secure URL:', uploadResult.secure_url);
+        console.log('Format:', uploadResult.format);
+        console.log('Size:', uploadResult.bytes);
+        
+        const responseData = {
+          url: uploadResult.secure_url,
+          publicId: uploadResult.public_id,
+          imageHash: imageHash,
+          format: uploadResult.format,
+          size: uploadResult.bytes,
+          width: uploadResult.width,
+          height: uploadResult.height
+        };
+        
+        // Cache the result
+        uploadCache.set(imageHash, {
+          data: responseData,
+          timestamp: Date.now()
+        });
+        
+        res.json({
+          success: true,
+          message: 'Image uploaded successfully to Cloudinary',
+          data: responseData
+        });
+        
+      } catch (uploadError) {
+        console.error('Cloudinary base64 upload error:', uploadError);
+        return res.status(500).json({
+          success: false,
+          message: 'Error uploading base64 image to Cloudinary',
+          error: uploadError.message
+        });
+      }
+      
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Invalid image format. Please provide base64 image data.'
+        message: 'No image data provided. Please provide either a file upload or base64 image data.'
       });
     }
-
-    // Return the file URL
-    const fileUrl = `/uploads/${uniqueFilename}`;
-    
-    // Clean BASE_URL to ensure no trailing slash
-    const baseUrl = (process.env.BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
-    
-    console.log('=== IMAGE UPLOAD DEBUG ===');
-    console.log('File saved to:', filePath);
-    console.log('File URL:', fileUrl);
-    console.log('Base URL from env:', process.env.BASE_URL);
-    console.log('Cleaned baseUrl:', baseUrl);
-    console.log('Full URL would be:', `${baseUrl}${fileUrl}`);
-    
-    res.json({
-      success: true,
-      message: 'Image uploaded successfully',
-      data: {
-        url: fileUrl,
-        filename: uniqueFilename,
-        fullUrl: `${baseUrl}${fileUrl}`
-      }
-    });
 
   } catch (error) {
     console.error('Error uploading image:', error);
@@ -90,135 +376,64 @@ const uploadImage = async (req, res) => {
   }
 };
 
-// Serve image file directly (public endpoint)
-const serveImage = async (req, res) => {
+
+
+// Delete image from Cloudinary
+const deleteImage = async (req, res) => {
   try {
-    const { filename } = req.params;
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    const { publicId } = req.params;
     
-    // Log main site access
-    const userAgent = req.get('User-Agent') || 'Unknown';
-    const origin = req.get('Origin') || 'Direct';
-    console.log(`[IMAGE SERVE] ${filename} - Origin: ${origin} - UserAgent: ${userAgent}`);
-    
-    // Validate filename to prevent directory traversal attacks
-    if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    if (!publicId) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid filename'
+        message: 'Public ID is required'
       });
     }
-    
-    const filePath = path.join(uploadsDir, filename);
-    
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Image file not found'
-      });
-    }
-    
-    // Get file stats
-    const stats = fs.statSync(filePath);
-    const fileSize = stats.size;
-    const ext = path.extname(filename).toLowerCase();
-    
-    // Validate file extension
-    const allowedExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
-    if (!allowedExtensions.includes(ext)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Unsupported file type'
-      });
-    }
-    
-    // Set appropriate content type
-    let contentType = 'image/jpeg'; // default
-    switch (ext) {
-      case '.png':
-        contentType = 'image/png';
-        break;
-      case '.jpg':
-      case '.jpeg':
-        contentType = 'image/jpeg';
-        break;
-      case '.gif':
-        contentType = 'image/gif';
-        break;
-      case '.webp':
-        contentType = 'image/webp';
-        break;
-      case '.svg':
-        contentType = 'image/svg+xml';
-        break;
-    }
-    
-    // Set headers for proper image serving
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', fileSize);
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // 1 year cache
-    res.setHeader('Expires', new Date(Date.now() + 31536000000).toUTCString());
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
-    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-    
-    // Stream the file
-    const fileStream = fs.createReadStream(filePath);
-    
-    fileStream.on('error', (streamError) => {
-      console.error('Error streaming file:', streamError);
-      if (!res.headersSent) {
-        res.status(500).json({
+
+    try {
+      const result = await cloudinary.uploader.destroy(publicId);
+      
+      if (result.result === 'ok') {
+        res.json({
+          success: true,
+          message: 'Image deleted successfully from Cloudinary',
+          data: {
+            publicId: publicId,
+            result: result.result
+          }
+        });
+      } else {
+        res.status(404).json({
           success: false,
-          message: 'Error reading image file',
-          error: streamError.message
+          message: 'Image not found or already deleted',
+          data: {
+            publicId: publicId,
+            result: result.result
+          }
         });
       }
-    });
-    
-    fileStream.pipe(res);
-    
-  } catch (error) {
-    console.error('Error serving image:', error);
-    if (!res.headersSent) {
-      res.status(500).json({
+    } catch (deleteError) {
+      console.error('Cloudinary delete error:', deleteError);
+      return res.status(500).json({
         success: false,
-        message: 'Error serving image',
-        error: error.message
+        message: 'Error deleting image from Cloudinary',
+        error: deleteError.message
       });
     }
-  }
-};
 
-// Test image serving endpoint
-const testImageServing = async (req, res) => {
-  try {
-    const { filename } = req.params;
-    const filePath = path.join(uploadsDir, filename);
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'Image file not found'
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Image file exists and can be served',
-      data: {
-        filename,
-        filePath,
-        url: `/uploads/${filename}`,
-        fullUrl: `${process.env.BASE_URL || 'http://localhost:8000'}/uploads/${filename}`
-      }
-    });
   } catch (error) {
-    console.error('Error testing image serving:', error);
+    console.error('Error deleting image:', error);
     res.status(500).json({
       success: false,
-      message: 'Error testing image serving',
+      message: 'Server error deleting image',
       error: error.message
     });
   }
@@ -226,6 +441,9 @@ const testImageServing = async (req, res) => {
 
 module.exports = {
   uploadImage,
-  serveImage,
-  testImageServing
+  deleteImage,
+  upload, // Export multer middleware for use in routes
+  deleteImagesFromCloudinary, // Export helper function for bulk deletion
+  extractPublicIdFromUrl, // Export helper function for public ID extraction
+  generateImageHash // Export helper function for hash generation
 };

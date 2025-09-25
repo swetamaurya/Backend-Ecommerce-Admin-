@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controller/productController');
-const { serveImage } = require('../controller/uploadController');
 const { auth, authorize } = require('../middilware/auth');
 
 // Debug route to test authentication
@@ -24,8 +23,7 @@ router.get('/public/:id', productController.getPublicProductById);
 // Get products by category (public - no auth required)
 router.get('/public/category/:category', productController.getProductsByCategory);
 
-// Serve product images (public - no auth required)
-router.get('/image/:filename', serveImage);
+// Note: Image serving now handled by Cloudinary directly
 
 // ---------------- Admin routes only ----------------
 // Get all products (admin only)

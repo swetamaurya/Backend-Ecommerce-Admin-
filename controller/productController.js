@@ -1,9 +1,27 @@
 const Product = require('../models/Product');
+const { deleteImagesFromCloudinary } = require('./uploadController');
+
+// Helper function to ensure image URLs are properly formatted
+const formatImageUrls = (images) => {
+  if (!images || !Array.isArray(images)) return images;
+  
+  return images.map(img => {
+    // Cloudinary URLs are already properly formatted
+    return {
+      ...img,
+      url: img.url
+    };
+  });
+};
 
 // Get all products (admin only)
 const getAllProducts = async (req, res) => {
   try {
     const { page , limit , category, featured, search } = req.query;
+    
+    console.log('=== GET ALL PRODUCTS REQUEST ===');
+    console.log('Query params:', { page, limit, category, featured, search });
+    console.log('User:', req.user?.email);
     
     // Build base query
     let query = {};
@@ -30,16 +48,34 @@ const getAllProducts = async (req, res) => {
     }
 
     const total = await Product.countDocuments(query);
+    console.log('Total products found:', total);
+    
     const products = await Product.find(query)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
 
-    // Add id field for frontend compatibility
+    console.log('Products returned:', products.length);
+    console.log('Product names:', products.map(p => p.name));
+
+    // Add id field for frontend compatibility and format image URLs
     const productsWithId = products.map(product => ({
       ...product.toObject(),
-      id: product._id
+      id: product._id,
+      images: formatImageUrls(product.images)
     }));
+
+    console.log('Response data:', {
+      success: true,
+      dataCount: productsWithId.length,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalProducts: total,
+        hasNextPage: parseInt(page) < Math.ceil(total / limit),
+        hasPrevPage: parseInt(page) > 1
+      }
+    });
 
     res.json({
       success: true,
@@ -194,6 +230,10 @@ const createProduct = async (req, res) => {
 
     await doc.save(); // pre-save will create slug and SKU
     console.log('Product created successfully:', doc._id);
+    console.log('Product name:', doc.name);
+    console.log('Product slug:', doc.slug);
+    console.log('Product SKU:', doc.sku);
+    console.log('Product createdAt:', doc.createdAt);
 
     return res.status(201).json({
       success: true,
@@ -271,20 +311,23 @@ const updateProduct = async (req, res) => {
       // Find images to delete
       const imagesToDelete = oldImageUrls.filter(url => !newImageUrls.includes(url));
       
-      // Delete old images from file system
-      imagesToDelete.forEach(imageUrl => {
-        if (imageUrl && imageUrl.startsWith('/uploads/')) {
-          const imagePath = path.join(__dirname, '..', imageUrl);
-          try {
-            if (fs.existsSync(imagePath)) {
-              fs.unlinkSync(imagePath);
-              console.log('Deleted old image:', imagePath);
-            }
-          } catch (error) {
-            console.error('Error deleting old image:', imagePath, error);
+      // Delete removed images from Cloudinary
+      if (imagesToDelete.length > 0) {
+        console.log('=== DELETING REMOVED IMAGES FROM CLOUDINARY ===');
+        console.log('Images to delete:', imagesToDelete);
+        
+        try {
+          const deleteResult = await deleteImagesFromCloudinary(imagesToDelete);
+          console.log('Cloudinary deletion result:', deleteResult);
+          
+          if (deleteResult.failed && deleteResult.failed.length > 0) {
+            console.warn('Some images could not be deleted from Cloudinary:', deleteResult.failed);
           }
+        } catch (error) {
+          console.error('Error deleting images from Cloudinary:', error);
+          // Don't fail the update if image deletion fails
         }
-      });
+      }
       
       // Debug: Log incoming images data
       console.log('=== UPDATE PRODUCT - INCOMING IMAGES ===');
@@ -371,24 +414,23 @@ const deleteProduct = async (req, res) => {
       });
     }
 
-    // Delete associated images from file system
+    // Delete associated images from Cloudinary
     if (product.images && product.images.length > 0) {
-      const fs = require('fs');
-      const path = require('path');
+      console.log('=== DELETING PRODUCT IMAGES FROM CLOUDINARY ===');
+      console.log('Product images to delete:', product.images.map(img => img.url));
       
-      product.images.forEach(image => {
-        if (image.url && image.url.startsWith('/uploads/')) {
-          const imagePath = path.join(__dirname, '..', image.url);
-          try {
-            if (fs.existsSync(imagePath)) {
-              fs.unlinkSync(imagePath);
-              console.log('Deleted image:', imagePath);
-            }
-          } catch (error) {
-            console.error('Error deleting image:', imagePath, error);
-          }
+      try {
+        const imageUrls = product.images.map(img => img.url);
+        const deleteResult = await deleteImagesFromCloudinary(imageUrls);
+        console.log('Cloudinary deletion result:', deleteResult);
+        
+        if (deleteResult.failed && deleteResult.failed.length > 0) {
+          console.warn('Some images could not be deleted from Cloudinary:', deleteResult.failed);
         }
-      });
+      } catch (error) {
+        console.error('Error deleting images from Cloudinary:', error);
+        // Don't fail the deletion if image cleanup fails
+      }
     }
 
     // Delete product from database
@@ -480,23 +522,7 @@ const getPublicProducts = async (req, res) => {
     console.log('Request host:', req.get('host'));
     const transformedProducts = products.map(product => ({
       ...product,
-      images: product.images?.map(img => {
-        let fullUrl;
-        if (img.url.startsWith('http')) {
-          fullUrl = img.url;
-        } else if (img.url.startsWith('/uploads/')) {
-          fullUrl = `${baseUrl}${img.url}`;
-        } else if (img.url.startsWith('uploads/')) {
-          fullUrl = `${baseUrl}/${img.url}`;
-        } else {
-          fullUrl = `${baseUrl}/uploads/${img.url}`;
-        }
-        console.log(`Image URL: ${img.url} -> ${fullUrl}`);
-        return {
-          ...img,
-          url: fullUrl
-        };
-      }) || []
+      images: formatImageUrls(product.images) || []
     }));
 
     res.json({
@@ -647,23 +673,7 @@ const getProductsByCategory = async (req, res) => {
     console.log('Request host:', req.get('host'));
     const transformedProducts = products.map(product => ({
       ...product,
-      images: product.images?.map(img => {
-        let fullUrl;
-        if (img.url.startsWith('http')) {
-          fullUrl = img.url;
-        } else if (img.url.startsWith('/uploads/')) {
-          fullUrl = `${baseUrl}${img.url}`;
-        } else if (img.url.startsWith('uploads/')) {
-          fullUrl = `${baseUrl}/${img.url}`;
-        } else {
-          fullUrl = `${baseUrl}/uploads/${img.url}`;
-        }
-        console.log(`Image URL: ${img.url} -> ${fullUrl}`);
-        return {
-          ...img,
-          url: fullUrl
-        };
-      }) || []
+      images: formatImageUrls(product.images) || []
     }));
 
     res.json({
