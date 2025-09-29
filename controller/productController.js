@@ -137,6 +137,9 @@ const createProduct = async (req, res) => {
     console.log('=== CREATE PRODUCT REQUEST ===');
     console.log('User:', req.user);
     console.log('Request body:', req.body);
+    console.log('Category from body:', req.body.category);
+    console.log('Category type:', typeof req.body.category);
+    console.log('Category length:', req.body.category?.length);
     
     // Auth guard (route also protects, but double-check)
     console.log('Auth check - req.user:', req.user);
@@ -156,37 +159,94 @@ const createProduct = async (req, res) => {
     } = req.body;
 
     // Required fields for simplified (non-variant) product
-    if (!name || !description || !category || !meterial || price === undefined || stock === undefined) {
-      console.log('Validation failed - missing required fields:', {
-        name: !!name,
-        description: !!description,
-        category: !!category,
-        meterial: !!meterial,
-        price: price !== undefined,
-        stock: stock !== undefined
-      });
+    console.log('=== VALIDATION CHECK ===');
+    console.log('Name:', name, 'Type:', typeof name, 'Truthy:', !!name);
+    console.log('Description:', description, 'Type:', typeof description, 'Truthy:', !!description);
+    console.log('Category:', category, 'Type:', typeof category, 'Truthy:', !!category);
+    console.log('Material:', meterial, 'Type:', typeof meterial, 'Truthy:', !!meterial);
+    console.log('Price:', price, 'Type:', typeof price, 'Undefined:', price === undefined);
+    console.log('Stock:', stock, 'Type:', typeof stock, 'Undefined:', stock === undefined);
+    
+    // Check each field individually and collect missing fields with specific messages
+    const missingFields = [];
+    const fieldMessages = {
+      name: 'Product Name',
+      description: 'Description',
+      category: 'Category',
+      meterial: 'Material',
+      price: 'Price',
+      mrp: 'MRP',
+      stock: 'Stock',
+      specialFeature: 'Special Features',
+      colors: 'Colors',
+      sizes: 'Sizes'
+    };
+    
+    if (!name || !name.toString().trim()) {
+      missingFields.push(fieldMessages.name);
+    }
+    if (!description || !description.toString().trim()) {
+      missingFields.push(fieldMessages.description);
+    }
+    if (!category || !category.toString().trim()) {
+      missingFields.push(fieldMessages.category);
+    }
+    if (!meterial || !meterial.toString().trim()) {
+      missingFields.push(fieldMessages.meterial);
+    }
+    if (price === undefined || price === null || price === '') {
+      missingFields.push(fieldMessages.price);
+    }
+    if (mrp === undefined || mrp === null || mrp === '') {
+      missingFields.push(fieldMessages.mrp);
+    }
+    if (stock === undefined || stock === null || stock === '') {
+      missingFields.push(fieldMessages.stock);
+    }
+    if (!specialFeature || !specialFeature.toString().trim()) {
+      missingFields.push(fieldMessages.specialFeature);
+    }
+    if (!colors || !Array.isArray(colors) || colors.length === 0) {
+      missingFields.push(fieldMessages.colors);
+    }
+    if (!sizes || !Array.isArray(sizes) || sizes.length === 0) {
+      missingFields.push(fieldMessages.sizes);
+    }
+    
+    
+    if (missingFields.length > 0) {
+      console.log('Validation failed - missing required fields:', missingFields);
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: name, description, category, meterial, price, stock'
+        message: `Please fill in: ${missingFields.join(', ')}`,
+        missingFields: missingFields
       });
     }
 
     // Normalize images: accept string[] or object[]
+    console.log('=== IMAGE PROCESSING DEBUG ===');
+    console.log('Raw images from frontend:', JSON.stringify(images, null, 2));
+    
     const processedImages = Array.isArray(images)
       ? images
           .filter(img => (typeof img === 'string' ? img.trim() : img?.url))
           .slice(0, 10)
-          .map((img, idx) =>
-            typeof img === 'string'
+          .map((img, idx) => {
+            const processed = typeof img === 'string'
               ? { url: img.trim(), alt: `Product image ${idx + 1}`, isPrimary: idx === 0 }
               : {
                   url: img.url.trim(),
                   alt: img.alt?.trim() || `Product image ${idx + 1}`,
                   thumbnail: img.thumbnail?.trim(),
                   isPrimary: Boolean(img.isPrimary)
-                }
-          )
+                };
+            console.log(`Image ${idx}:`, processed);
+            return processed;
+          })
       : [];
+
+    console.log('Processed images:', JSON.stringify(processedImages, null, 2));
+    console.log('Primary images:', processedImages.filter(img => img.isPrimary === true));
 
     // CRITICAL FIX: Ensure only ONE image has isPrimary: true
     if (processedImages.length > 0) {
