@@ -229,11 +229,11 @@ const createProduct = async (req, res) => {
     }
 
     await doc.save(); // pre-save will create slug and SKU
-    console.log('Product created successfully:', doc._id);
-    console.log('Product name:', doc.name);
-    console.log('Product slug:', doc.slug);
-    console.log('Product SKU:', doc.sku);
-    console.log('Product createdAt:', doc.createdAt);
+    // console.log('Product created successfully:', doc._id);
+    // console.log('Product name:', doc.name);
+    // console.log('Product slug:', doc.slug);
+    // console.log('Product SKU:', doc.sku);
+    // console.log('Product createdAt:', doc.createdAt);
 
     return res.status(201).json({
       success: true,
@@ -667,10 +667,10 @@ const getProductsByCategory = async (req, res) => {
     // Ensure baseUrl doesn't end with slash
     baseUrl = baseUrl.replace(/\/$/, '');
     
-    console.log('=== IMAGE URL TRANSFORMATION ===');
-    console.log('BASE_URL from env:', process.env.BASE_URL);
-    console.log('Computed baseUrl:', baseUrl);
-    console.log('Request host:', req.get('host'));
+    // console.log('=== IMAGE URL TRANSFORMATION ===');
+    // console.log('BASE_URL from env:', process.env.BASE_URL);
+    // console.log('Computed baseUrl:', baseUrl);
+    // console.log('Request host:', req.get('host'));
     const transformedProducts = products.map(product => ({
       ...product,
       images: formatImageUrls(product.images) || []

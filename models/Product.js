@@ -16,12 +16,13 @@ const productSchema = new mongoose.Schema(
         'Bath Mats',
         'Bedside Runners',
         'Cotton Yoga Mats',
-        'Mats Collection',
+        // 'Mats Collection',
+        'Aasan Mats',
         'In Door Mats',
         'Out Door Mats',
-        'Other'
+       
       ],
-      default: 'Other',
+      default: '',
       index: true
     },
     brand: { type: String, default: 'Royal Thread', index: true },
