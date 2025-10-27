@@ -20,6 +20,7 @@ const productSchema = new mongoose.Schema(
         'Aasan Mats',
         'In Door Mats',
         'Out Door Mats',
+        'Animal Rugs',
        
       ],
       default: '',

@@ -134,16 +134,16 @@ const getProductById = async (req, res) => {
 // Create product (admin only)
 const createProduct = async (req, res) => {
   try {
-    console.log('=== CREATE PRODUCT REQUEST ===');
-    console.log('User:', req.user);
-    console.log('Request body:', req.body);
-    console.log('Category from body:', req.body.category);
-    console.log('Category type:', typeof req.body.category);
-    console.log('Category length:', req.body.category?.length);
+    // console.log('=== CREATE PRODUCT REQUEST ===');
+    // console.log('User:', req.user);
+    // console.log('Request body:', req.body);
+    // console.log('Category from body:', req.body.category);
+    // console.log('Category type:', typeof req.body.category);
+    // console.log('Category length:', req.body.category?.length);
     
     // Auth guard (route also protects, but double-check)
-    console.log('Auth check - req.user:', req.user);
-    console.log('Auth check - user role:', req.user?.role);
+    // console.log('Auth check - req.user:', req.user);
+    // console.log('Auth check - user role:', req.user?.role);
     
     if (!req.user || req.user.role !== 'admin') {
       console.log('Auth failed - user not admin or no user found');
