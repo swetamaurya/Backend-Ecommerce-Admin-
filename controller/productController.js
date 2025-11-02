@@ -154,18 +154,18 @@ const createProduct = async (req, res) => {
       name, description, category, brand, meterial,
       colors, sizes,
       price, mrp, stock,
-      images,
+      images, rating , reviewsCount,
       specialFeature, isActive, isFeatured
     } = req.body;
 
     // Required fields for simplified (non-variant) product
-    console.log('=== VALIDATION CHECK ===');
-    console.log('Name:', name, 'Type:', typeof name, 'Truthy:', !!name);
-    console.log('Description:', description, 'Type:', typeof description, 'Truthy:', !!description);
-    console.log('Category:', category, 'Type:', typeof category, 'Truthy:', !!category);
-    console.log('Material:', meterial, 'Type:', typeof meterial, 'Truthy:', !!meterial);
-    console.log('Price:', price, 'Type:', typeof price, 'Undefined:', price === undefined);
-    console.log('Stock:', stock, 'Type:', typeof stock, 'Undefined:', stock === undefined);
+    // console.log('=== VALIDATION CHECK ===');
+    // console.log('Name:', name, 'Type:', typeof name, 'Truthy:', !!name);
+    // console.log('Description:', description, 'Type:', typeof description, 'Truthy:', !!description);
+    // console.log('Category:', category, 'Type:', typeof category, 'Truthy:', !!category);
+    // console.log('Material:', meterial, 'Type:', typeof meterial, 'Truthy:', !!meterial);
+    // console.log('Price:', price, 'Type:', typeof price, 'Undefined:', price === undefined);
+    // console.log('Stock:', stock, 'Type:', typeof stock, 'Undefined:', stock === undefined);
     
     // Check each field individually and collect missing fields with specific messages
     const missingFields = [];
@@ -179,7 +179,9 @@ const createProduct = async (req, res) => {
       stock: 'Stock',
       specialFeature: 'Special Features',
       colors: 'Colors',
-      sizes: 'Sizes'
+      sizes: 'Sizes',
+      // reviewsCount: 'Reviews Count',
+      // rating: 'Rating'
     };
     
     if (!name || !name.toString().trim()) {
@@ -269,6 +271,8 @@ const createProduct = async (req, res) => {
       price: Number(price),
       mrp: mrp !== undefined ? Number(mrp) : Number(price),
       stock: parseInt(stock, 10),
+      reviewsCount: Number(price),
+      rating:Number(price),
       images: processedImages,
       specialFeature: specialFeature?.toString().trim() || '',
       isActive: isActive !== undefined ? Boolean(isActive) : true,
@@ -319,7 +323,8 @@ const updateProduct = async (req, res) => {
 
     const {
       name, description, price, mrp, stock, images, category, brand, meterial,
-      colors, sizes,
+      colors, sizes,rating, reviewsCount,
+
       variants, metaTitle, metaDescription, keywords, isActive, isFeatured, popularity, specialFeature
     } = req.body;
 
@@ -348,7 +353,10 @@ const updateProduct = async (req, res) => {
     if (isActive !== undefined) product.isActive = isActive;
     if (isFeatured !== undefined) product.isFeatured = isFeatured;
     if (popularity !== undefined) product.popularity = typeof popularity === 'number' ? popularity : parseInt(popularity);
-    
+ 
+          if (rating !== undefined) product.rating = typeof rating === 'number' ? rating : parseFloat(rating);
+          if (reviewsCount !== undefined) product.reviewsCount = typeof reviewsCount === 'number' ? reviewsCount : parseFloat(reviewsCount);
+
     // Update colors and sizes
     if (colors !== undefined) {
       product.colors = Array.isArray(colors) ? colors.map(c => c.toString().trim()).filter(Boolean) : [];
