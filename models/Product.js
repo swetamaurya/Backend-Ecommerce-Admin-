@@ -47,7 +47,7 @@ const productSchema = new mongoose.Schema(
         isPrimary: { type: Boolean, default: false }
       }
     ],
-    rating: { type: String, default: '4.5' },
+    rating: { type: String, default: 4.5 },
     reviewsCount: { type: String, default: 5 },
     // Flags
     specialFeature: { type: String, default: '' },
